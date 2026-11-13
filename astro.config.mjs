@@ -11,7 +11,7 @@ export default defineConfig({
   // link, map, data file and image on the site picks up `base` from here, so
   // this is the only place the repository name is written.
   site: "https://hoonizzz.github.io",
-  base: "/astro-maplibre-template",
+  base: "/Atlas",
 
   // mdx: pages written in MDX. sitemap: sitemap-index.xml for search engines.
   // maplibreYaml: `npm run dev` reloads the page when you save a map's YAML.
