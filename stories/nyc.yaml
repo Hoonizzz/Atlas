@@ -53,7 +53,10 @@ layers:
     type: line
     source:
       type: geojson
-      url: "data/stream-ice-8000.geojson"
+      # Populated from the compressed full line dataset in scrollytelling.html.
+      data:
+        type: FeatureCollection
+        features: []
     layout:
       visibility: none
       line-join: round
@@ -112,6 +115,18 @@ chapters:
     layers:
       hide: [Greenland_Bed_Visual]
 
+  - id: ice-velocity
+    title: Ice in Motion
+    description: >-
+      <p>Add your text here.</p>
+    center: [-42.0, 72.0]
+    zoom: 3
+    pitch: 0
+    bearing: 0
+    alignment: left
+    layers:
+      hide: [Greenland_Bed_Visual, stream-ice-8000]
+
   - id: squirrels
     title: Beneath the Ice
     description: >-
@@ -157,18 +172,32 @@ chapters:
     layers:
       show: [stream-ice-8000]
 
+  - id: stream-overview
+    title: The Wider View
+    description: >-
+      <p>Zooming out reveals how these local drainage pathways
+      form a network beneath Greenland's ice sheet.</p>
+    center: [-42.0, 72.0]
+    zoom: 3
+    pitch: 0
+    bearing: 0
+    alignment: left
+    layers:
+      show: [Greenland_Bed_Visual]
+      hide: [stream-ice-8000]
+
   - id: mississippi
-    title: Pictures in a chapter
+    title: Outlet
     description: >-
       <p>A chapter can show an image above its text with <code>image:</code>,
       a file in <code>img/</code>. This is Harold Fisk's 1944 map of the
       Mississippi's ancient courses, near where the map has flown to.</p>
     image: "img/fisk02.jpg"
-    center: [-42.0, 80.0]
-    zoom: 2.5
+    center: [-42.0, 72.0]
+    zoom: 5
     pitch: 0
     bearing: 0
-    alignment: center
+    alignment: left
 
     layers:
       hide: [central-park]
@@ -183,7 +212,7 @@ chapters:
     zoom: 2.5
     pitch: 0
     bearing: 0
-    alignment: center
+    alignment: left
 
 
 footer: >-

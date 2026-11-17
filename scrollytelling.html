@@ -41,15 +41,57 @@
     <ml-scrollytelling src="stories/nyc.yaml"></ml-scrollytelling>
   </main>
 
+  <p class="ice-velocity-status" role="status" hidden>Loading annual images…</p>
+  <script type="module" src="js/ice-velocity.js"></script>
+
+  <aside class="flow-controls" aria-label="Flow display controls" hidden>
+    <div class="flow-control">
+      <label for="flow-darkness" title="Background darkness"><img src="img/flow-controls/Icon.png" alt="Background darkness" width="48" height="48"></label>
+      <input id="flow-darkness" type="range" min="0" max="95" step="1" value="0" aria-orientation="vertical">
+    </div>
+    <div class="flow-control">
+      <label for="flow-speed" title="Particle speed"><img src="img/flow-controls/icon2.png" alt="Particle speed" width="48" height="48"></label>
+      <input id="flow-speed" type="range" min="0" max="20" step="0.1" value="1" aria-orientation="vertical">
+    </div>
+    <div class="flow-control">
+      <label for="flow-count" title="Particle count"><img src="img/flow-controls/icon3.png" alt="Particle count" width="48" height="48"></label>
+      <input id="flow-count" type="range" min="0" max="10000" step="100" value="3000" aria-orientation="vertical">
+    </div>
+  </aside>
+
+  <!-- Allow dragging only while exploring the stream detail chapter. -->
+  <script type="module">
+    const story = document.querySelector("ml-scrollytelling");
+
+    try {
+      const map = await story.mapReady();
+      const updateDragging = chapterId => {
+        if (chapterId === "stream-detail") {
+          map.dragPan.enable();
+        } else {
+          map.dragPan.disable();
+        }
+      };
+
+      story.addEventListener("ml-scrollytelling:chapter", event => {
+        updateDragging(event.detail.chapterId);
+      });
+      updateDragging(story.activeChapterId);
+    } catch (error) {
+      console.error("Map dragging setup failed:", error);
+    }
+  </script>
+
   <!-- STREAM PARTICLE ANIMATION -->
   <script type="module">
     const story = document.querySelector("ml-scrollytelling");
 
     const SETTINGS = {
-      geojson: "data/stream-ice-8000.geojson",
+      geojson: "data/streams-lines.geojson.gz",
       chapter: "stream-detail",
       particleCount: 3000,
       speed: 1,
+      metresPerSecond: 1000,
       updateInterval: 30,
       particleRadius: 2,
       particleColor: "#A8F3FF"
@@ -69,9 +111,51 @@
     let running = false;
     let frameID = null;
     let lastUpdate = 0;
-    let elapsed = 0;
     let chapterToken = 0;
     let pendingMoveEnd = null;
+    const controls = document.querySelector(".flow-controls");
+    const darknessInput = document.getElementById("flow-darkness");
+    const speedInput = document.getElementById("flow-speed");
+    const countInput = document.getElementById("flow-count");
+    const rasterBrightness = new Map();
+
+    function updateBackground() {
+      if (!map) return;
+      const factor = controls.hidden ? 1 : 1 - Number(darknessInput.value) / 100;
+      for (const [id, brightness] of rasterBrightness) {
+        map.setPaintProperty(id, "raster-brightness-min", brightness.min * factor);
+        map.setPaintProperty(id, "raster-brightness-max", brightness.max * factor);
+      }
+    }
+
+    function updateControls(chapterId) {
+      controls.hidden = chapterId !== SETTINGS.chapter;
+      updateBackground();
+    }
+
+    darknessInput.addEventListener("input", () => {
+      updateBackground();
+    });
+    speedInput.addEventListener("input", () => {
+      SETTINGS.speed = Number(speedInput.value);
+    });
+    countInput.addEventListener("input", () => {
+      SETTINGS.particleCount = Number(countInput.value);
+      if (!paths.length) return;
+      // Keep existing particles in place when changing density.
+      if (particles.length > SETTINGS.particleCount) {
+        particles.length = SETTINGS.particleCount;
+      }
+      while (particles.length < SETTINGS.particleCount) {
+        particles.push(createParticle());
+      }
+      if (!particles.length && map) {
+        map.getSource(SOURCE_ID)?.setData(emptyGeoJSON());
+      }
+      if (map && story.activeChapterId === SETTINGS.chapter && !map.isMoving()) {
+        startParticles();
+      }
+    });
 
     // Identify the active chapter as soon as it changes.
     story.addEventListener("ml-scrollytelling:chapter", event => {
@@ -98,11 +182,13 @@
         if (points.length > 0) {
           const previous = points[points.length - 1];
 
-          const dx = (lon - previous[0]) *
-            Math.cos((lat + previous[1]) * Math.PI / 360);
-
-          const dy = lat - previous[1];
-          total += Math.hypot(dx, dy);
+          const radians = Math.PI / 180;
+          const dLat = (lat - previous[1]) * radians;
+          const dLon = (lon - previous[0]) * radians;
+          const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(previous[1] * radians) * Math.cos(lat * radians) *
+            Math.sin(dLon / 2) ** 2;
+          total += 6371008.8 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
         }
 
         points.push([lon, lat]);
@@ -110,7 +196,21 @@
       }
 
       if (points.length > 1 && total > 0) {
-        paths.push({ points, distances, total });
+        paths.push({ points, distances, total, next: null });
+      }
+    }
+
+    // The GIS lines run downstream. Match endpoints at export precision;
+    // do not bridge nearby but disconnected drainage pathways.
+    function connectPaths() {
+      const endpointKey = point => point.map(value => value.toFixed(6)).join(",");
+      const starts = new Map();
+      for (const path of paths) {
+        starts.set(endpointKey(path.points[0]), path);
+      }
+      for (const path of paths) {
+        const next = starts.get(endpointKey(path.points[path.points.length - 1]));
+        path.next = next && next !== path ? next : null;
       }
     }
 
@@ -148,14 +248,33 @@
       ];
     }
 
+    function createParticle(randomPosition = true) {
+      const path = paths[Math.floor(Math.random() * paths.length)];
+      return {
+        path,
+        distance: randomPosition ? Math.random() * path.total : 0
+      };
+    }
+
+    function advanceParticle(particle, dt) {
+      // All particles travel the same ground distance per second, including
+      // after a slider change or a transition to a different-length line.
+      particle.distance += dt * SETTINGS.metresPerSecond * SETTINGS.speed;
+      while (particle.distance >= particle.path.total) {
+        particle.distance -= particle.path.total;
+        if (!particle.path.next) {
+          // Re-seed only at an endpoint with no mapped downstream line.
+          Object.assign(particle, createParticle(false));
+          return;
+        }
+        particle.path = particle.path.next;
+      }
+    }
+
     function createParticles() {
       particles = Array.from(
         { length: SETTINGS.particleCount },
-        () => ({
-          path: paths[Math.floor(Math.random() * paths.length)],
-          progress: Math.random(),
-          velocity: 0.5 + Math.random()
-        })
+        () => createParticle()
       );
     }
 
@@ -168,21 +287,19 @@
           ? Math.min((timestamp - lastUpdate) / 1000, 0.1)
           : 0;
 
-        elapsed += dt;
         lastUpdate = timestamp;
 
         const features = particles.map(particle => {
-          const progress = (
-            particle.progress +
-            elapsed * SETTINGS.speed * particle.velocity
-          ) % 1;
+          advanceParticle(particle, dt);
 
           return {
             type: "Feature",
             properties: {},
             geometry: {
               type: "Point",
-              coordinates: pointAlongPath(particle.path, progress)
+              coordinates: pointAlongPath(
+                particle.path, particle.distance / particle.path.total
+              )
             }
           };
         });
@@ -227,6 +344,7 @@
     // Start only after zooming has finished.
     function handleChapter(chapterId) {
       const token = ++chapterToken;
+      updateControls(chapterId);
 
       if (map && pendingMoveEnd) {
         map.off("moveend", pendingMoveEnd);
@@ -272,6 +390,15 @@
       try {
         map = await story.mapReady();
 
+        for (const layer of map.getStyle().layers) {
+          if (layer.type !== "raster") continue;
+          rasterBrightness.set(layer.id, {
+            min: map.getPaintProperty(layer.id, "raster-brightness-min") ?? 0,
+            max: map.getPaintProperty(layer.id, "raster-brightness-max") ?? 1
+          });
+        }
+        updateControls(story.activeChapterId);
+
         map.addSource(SOURCE_ID, {
           type: "geojson",
           data: emptyGeoJSON()
@@ -295,7 +422,13 @@
           throw new Error("GeoJSON load failed: " + response.status);
         }
 
-        const data = await response.json();
+        // Decode the full line dataset once for both the map and particles.
+        const data = await new Response(
+          response.body.pipeThrough(new DecompressionStream("gzip"))
+        ).json();
+
+        const streamLayer = map.getLayer("stream-ice-8000");
+        map.getSource(streamLayer.source).setData(data);
 
         for (const feature of data.features || []) {
           const geometry = feature.geometry;
@@ -314,6 +447,7 @@
           throw new Error("No usable stream paths found.");
         }
 
+        connectPaths();
         createParticles();
 
         console.log("Stream paths:", paths.length);
