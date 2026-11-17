@@ -1,5 +1,7 @@
 ﻿const story = document.querySelector("ml-scrollytelling");
+import { completeLoadingTask, failLoading, waitForSources } from "./startup.js";
 const status = document.querySelector(".ice-velocity-status");
+const legend = document.querySelector(".ice-velocity-legend");
 const years = Array.from({ length: 10 }, (_, index) => 2015 + index);
 const sourceId = year => `ice-velocity-source-${year}`;
 const layerId = year => `ice-velocity-layer-${year}`;
@@ -31,6 +33,7 @@ async function loadLayers() {
   if (ready) return;
   if (loading) return loading;
   loading = (async () => {
+    await customElements.whenDefined("ml-scrollytelling");
     map = await story.mapReady();
     const response = await fetch("img/ice-velocity-overlay/coordinates.json");
     if (!response.ok) throw new Error(`Overlay coordinates: ${response.status}`);
@@ -49,7 +52,8 @@ async function loadLayers() {
       if (!map.getLayer(layerId(year))) {
         map.addLayer({
           id: layerId(year), type: "raster", source: sourceId(year),
-          layout: { visibility: "none" },
+          // Prepare all image sources invisibly behind the startup screen.
+          layout: { visibility: "visible" },
           paint: {
             "raster-opacity": 0,
             "raster-opacity-transition": { duration: 0, delay: 0 },
@@ -58,10 +62,12 @@ async function loadLayers() {
         }, "stream-ice-8000");
       }
     }
+    await waitForSources(map, years.map(sourceId));
     map.on("sourcedata", event => {
       if (active && !status.hidden && event.sourceId?.startsWith("ice-velocity-source-")) showFrame();
     });
     ready = true;
+    updateVisibility();
   })().catch(error => { loading = undefined; throw error; });
   return loading;
 }
@@ -76,6 +82,7 @@ function updateVisibility() {
 
 async function updateChapter(chapterId) {
   active = chapterId === "ice-velocity";
+  legend.hidden = !active;
   stop();
   status.hidden = !active;
   if (!active) { updateVisibility(); return; }
@@ -98,6 +105,10 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) stop();
   else play();
 });
-story.mapReady().then(() => updateChapter(story.activeChapterId)).catch(error => {
+loadLayers().then(() => {
+  completeLoadingTask("ice");
+  return updateChapter(story.activeChapterId);
+}).catch(error => {
+  failLoading(error);
   console.error("Ice velocity chapter setup:", error);
 });

@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="atlas-loading">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -20,11 +20,22 @@
   </script>
 
   <script type="module"
+    onerror="document.dispatchEvent(new Event('atlas-library-error'))"
     src="https://unpkg.com/@maplibre-yaml/core@0.10/register.js">
   </script>
 </head>
 
 <body class="bleed">
+  <section class="atlas-loader" role="status" aria-live="polite" aria-label="Loading atlas">
+    <div class="atlas-loader-content">
+      <span class="atlas-loader-spinner" aria-hidden="true"></span>
+      <h1>Loading…</h1>
+      <p class="atlas-loader-detail">Preparing the atlas</p>
+      <p class="atlas-loader-count">0 / 4</p>
+      <button class="atlas-loader-retry" type="button" hidden>Retry</button>
+    </div>
+  </section>
+  <script type="module" src="js/startup.js"></script>
   <header class="site-header">
     <div class="container">
       <a class="site-name" href="./">Matter, Unwritten</a>
@@ -42,6 +53,19 @@
   </main>
 
   <p class="ice-velocity-status" role="status" hidden>Loading annual images…</p>
+  <aside class="ice-velocity-legend" aria-label="Ice speed legend, 0 to 4000, linear scale" hidden>
+    <h3>Ice speed <span class="ice-velocity-unit">(m/yr)</span></h3>
+    <div class="ice-velocity-scale">
+      <div class="ice-velocity-scale-bar" aria-hidden="true"></div>
+      <div class="ice-velocity-scale-labels">
+        <span style="bottom: 100%">4,000</span>
+        <span style="bottom: 50%">2,000</span>
+        <span style="bottom: 25%">1,000</span>
+        <span style="bottom: 7.5%">300</span>
+        <span style="bottom: 0%">0</span>
+      </div>
+    </div>
+  </aside>
   <script type="module" src="js/ice-velocity.js"></script>
 
   <aside class="flow-controls" aria-label="Flow display controls" hidden>
@@ -51,11 +75,11 @@
     </div>
     <div class="flow-control">
       <label for="flow-speed" title="Particle speed"><img src="img/flow-controls/icon2.png" alt="Particle speed" width="48" height="48"></label>
-      <input id="flow-speed" type="range" min="0" max="20" step="0.1" value="1" aria-orientation="vertical">
+      <input id="flow-speed" type="range" min="0" max="20" step="0.1" value="10" aria-orientation="vertical">
     </div>
     <div class="flow-control">
       <label for="flow-count" title="Particle count"><img src="img/flow-controls/icon3.png" alt="Particle count" width="48" height="48"></label>
-      <input id="flow-count" type="range" min="0" max="10000" step="100" value="3000" aria-orientation="vertical">
+      <input id="flow-count" type="range" min="0" max="10000" step="100" value="5000" aria-orientation="vertical">
     </div>
   </aside>
 
@@ -64,6 +88,7 @@
     const story = document.querySelector("ml-scrollytelling");
 
     try {
+      await customElements.whenDefined("ml-scrollytelling");
       const map = await story.mapReady();
       const updateDragging = chapterId => {
         if (chapterId === "stream-detail") {
@@ -84,13 +109,14 @@
 
   <!-- STREAM PARTICLE ANIMATION -->
   <script type="module">
+    import { completeLoadingTask, failLoading, setLoadingDetail } from "./js/startup.js";
     const story = document.querySelector("ml-scrollytelling");
 
     const SETTINGS = {
       geojson: "data/streams-lines.geojson.gz",
       chapter: "stream-detail",
-      particleCount: 3000,
-      speed: 1,
+      particleCount: 5000,
+      speed: 10,
       metresPerSecond: 1000,
       updateInterval: 30,
       particleRadius: 2,
@@ -388,6 +414,7 @@
 
     async function initialize() {
       try {
+        await customElements.whenDefined("ml-scrollytelling");
         map = await story.mapReady();
 
         for (const layer of map.getStyle().layers) {
@@ -416,12 +443,16 @@
           }
         });
 
+        setLoadingDetail("streams", "Downloading stream data");
         const response = await fetch(SETTINGS.geojson);
 
         if (!response.ok) {
           throw new Error("GeoJSON load failed: " + response.status);
         }
 
+        setLoadingDetail("streams", "Preparing stream paths");
+        // Let the loading screen paint before parsing the large dataset.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         // Decode the full line dataset once for both the map and particles.
         const data = await new Response(
           response.body.pipeThrough(new DecompressionStream("gzip"))
@@ -430,6 +461,7 @@
         const streamLayer = map.getLayer("stream-ice-8000");
         map.getSource(streamLayer.source).setData(data);
 
+        let processed = 0;
         for (const feature of data.features || []) {
           const geometry = feature.geometry;
           if (!geometry) continue;
@@ -440,6 +472,10 @@
             for (const line of geometry.coordinates) {
               addPath(line);
             }
+          }
+          // Keep the loading screen responsive while building the network.
+          if (++processed % 10000 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
           }
         }
 
@@ -455,9 +491,11 @@
 
         // Initialize the current chapter after data loading.
         handleChapter(story.activeChapterId);
+        completeLoadingTask("streams");
 
       } catch (error) {
         console.error("Particle animation error:", error);
+        failLoading(error);
       }
     }
 

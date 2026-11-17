@@ -62,6 +62,48 @@
   color-scheme: light;
 }
 
+/* Keep the map laid out and rendering behind the loading screen. */
+html.atlas-loading { overflow: hidden; }
+html.atlas-loading body > :not(.atlas-loader) { visibility: hidden; }
+.atlas-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: #121e2b;
+  color: #edf5fa;
+  text-align: center;
+}
+.atlas-loader[hidden] { display: none; }
+.atlas-loader-content { max-width: 34rem; padding: 2rem; }
+.atlas-loader h1 { margin: 1.25rem 0 0.75rem; font-size: clamp(1.5rem, 4vw, 2.5rem); }
+.atlas-loader-detail { font-size: 0.875rem; color: #b8cbd9; }
+.atlas-loader-count { font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.atlas-loader-spinner {
+  display: inline-block;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 2px solid rgb(168 243 255 / 0.2);
+  border-top-color: #a8f3ff;
+  border-radius: 50%;
+  animation: atlas-spin 1s linear infinite;
+}
+.atlas-loader.has-error .atlas-loader-spinner { display: none; }
+.atlas-loader-retry {
+  padding: 0.65rem 1.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #a8f3ff;
+  color: #121e2b;
+  cursor: pointer;
+  font: inherit;
+}
+@keyframes atlas-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .atlas-loader-spinner { animation: none; }
+}
+
 /* Dark colours when the reader's system is set to dark mode. Maps keep their
    own (light) basemap and white popups. */
 @media (prefers-color-scheme: dark) {
@@ -447,4 +489,75 @@ ml-scrollytelling .scrolly-chapter.align-left .chapter-content {
 
 .ice-velocity-status[hidden] {
   display: none;
+}
+
+.ice-velocity-legend {
+  position: fixed;
+  top: calc(var(--header-h) + 1rem);
+  right: 1.5rem;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  height: clamp(14rem, 36vh, 19rem);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 0.94);
+  color: #1f2937;
+  pointer-events: none;
+}
+
+.ice-velocity-legend[hidden] {
+  display: none;
+}
+
+.ice-velocity-legend h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.ice-velocity-scale {
+  display: flex;
+  gap: 0.65rem;
+  flex: 1;
+  min-height: 0;
+  margin: 0.25rem 0;
+}
+
+/* QGIS linear stops from the supplied screenshots; colors approximated
+   from swatches. Stop position is speed / 4000, not equal color spacing. */
+.ice-velocity-scale-bar {
+  width: 1rem;
+  border: 1px solid rgb(0 0 0 / 0.15);
+  border-radius: 0.25rem;
+  background: linear-gradient(to top,
+    rgb(168 237 251 / 0) 0%,
+    #a8edfb 0.25%, #a8edfb 0.5%, #5cc2d8 1%,
+    #50a5ff 1.5%, #507fff 2%, #584dff 2.5%,
+    #3075dd 3%, #1099b6 3.5%, #0fb89f 4%,
+    #2bd972 4.5%, #45fa4b 5%, #70db2d 5.5%,
+    #9aba0b 6%, #b89b0b 6.5%, #df752d 7%,
+    #ff5054 7.5%, #ff1257 8.75%, #d00050 11.25%,
+    #a0004b 15%, #8b0039 20%, #8000a2 25%,
+    #8e00b7 30%, #a500d5 35%, #cf00f5 50%, #ff009d 100%);
+}
+
+.ice-velocity-scale-labels {
+  position: relative;
+  min-width: 2.5rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ice-velocity-scale-labels span {
+  position: absolute;
+  left: 0;
+  transform: translateY(50%);
+}
+
+.ice-velocity-unit {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 400;
 }

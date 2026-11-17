@@ -183,8 +183,7 @@ chapters:
     bearing: 0
     alignment: left
     layers:
-      show: [Greenland_Bed_Visual]
-      hide: [stream-ice-8000]
+      hide: [Greenland_Bed_Visual, stream-ice-8000]
 
   - id: mississippi
     title: Outlet
