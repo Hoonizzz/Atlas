@@ -41,6 +41,7 @@ layers:
       type: raster
       tiles:
         - "Greenaland_Bed_Visual/{z}/{x}/{y}.png"
+      bounds: [-92.8125, 57.326522, 11.25, 84.267172]
       tileSize: 256
       minzoom: 0
       maxzoom: 7
